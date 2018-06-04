@@ -136,8 +136,10 @@ class GenericContentsManager(ContentsManager, HasTraits):
         model = base_model(path)
         model["type"] = "file"
         if self.fs.isfile(path):
-            model["last_modified"] = model["created"] = self.fs.lstat(path)["ST_MTIME"]
+            fs_stat = self.fs.lstat(path)
+            model["last_modified"] = model["created"] = fs_stat["ST_MTIME"]
         else:
+            fs_stat = {}
             model["last_modified"] = model["created"] = DUMMY_CREATED_DATE
         if content:
             try:
@@ -153,6 +155,7 @@ class GenericContentsManager(ContentsManager, HasTraits):
                 model["format"] = format or "base64"
                 from base64 import b64decode
                 model["content"] = b64decode(content)
+            model['size'] = fs_stat.get('ST_SIZE')
         return model
 
     def _convert_file_records(self, paths):

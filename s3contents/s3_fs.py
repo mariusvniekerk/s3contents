@@ -71,7 +71,7 @@ class S3FS(GenericFS):
     def ls(self, path=""):
         path_ = self.path(path)
         self.log.debug("S3contents.S3FS: Listing directory: `%s`", path_)
-        files = self.fs.ls(path_, refresh=True)
+        files = self.fs.ls(path_)
         return self.unprefix(files)
 
     def isfile(self, path):
@@ -84,7 +84,7 @@ class S3FS(GenericFS):
         else:
             try:
                 # Info will fail if path is a dir
-                self.fs.info(path_, refresh=True)
+                self.fs.info(path_)
                 is_file = True
             except FileNotFoundError:
                 pass
@@ -102,7 +102,7 @@ class S3FS(GenericFS):
         else:
             try:
                 # Info will fail if path is a dir
-                self.fs.info(path_, refresh=True)
+                self.fs.info(path_)
                 is_dir = False
             except FileNotFoundError:
                 is_dir = True
@@ -127,6 +127,7 @@ class S3FS(GenericFS):
                 self.cp(old_item_path, new_item_path)
         elif self.isfile(old_path):
             self.fs.copy(old_path_, new_path_)
+        self.fs.invalidate_cache(new_path_)
 
     def rm(self, path):
         path_ = self.path(path)
@@ -137,12 +138,13 @@ class S3FS(GenericFS):
         elif self.isdir(path):
             self.log.debug("S3contents.S3FS: Removing directory: `%s`", path_)
             self.fs.rm(path_ + self.delimiter, recursive=True)
-            # self.fs.rmdir(path_ + self.delimiter, recursive=True)
+        self.fs.invalidate_cache(path_)
 
     def mkdir(self, path):
         path_ = self.path(path, self.dir_keep_file)
         self.log.debug("S3contents.S3FS: Making dir: `%s`", path_)
         self.fs.touch(path_)
+        self.fs.invalidate_cache(path_)
 
     def read(self, path):
         path_ = self.path(path)
@@ -154,9 +156,11 @@ class S3FS(GenericFS):
 
     def lstat(self, path):
         path_ = self.path(path)
-        info = self.fs.info(path_, refresh=True)
-        ret = {}
-        ret["ST_MTIME"] = info["LastModified"]
+        info = self.fs.info(path_)
+        ret = {
+            "ST_MTIME": info["LastModified"],
+            "ST_SIZE": info["Size"]
+        }
         return ret
 
     def write(self, path, content, format):
