@@ -154,11 +154,22 @@ class S3FS(GenericFS):
 
     def lstat(self, path):
         path_ = self.path(path)
-        info = self.fs.info(path_)
-        ret = {
-            "ST_MTIME": info["LastModified"],
-            "ST_SIZE": info["Size"],
-        }
+        if self.isdir(path):
+            # use the modification timestamps of immediate children to determine our path's mtime
+            try:
+                modification_dates = filter(None, (e.get('LastModified') for e in self.fs.ls(path_, detail=True)))
+                ret = {
+                    "ST_MTIME": max(modification_dates, default=None),
+                    "ST_SIZE": None,
+                }
+            except FileNotFoundError:
+                ret = {}
+        else:
+            info = self.fs.info(path_)
+            ret = {
+                "ST_MTIME": info["LastModified"],
+                "ST_SIZE": info["Size"],
+            }
         return ret
 
     def write(self, path, content, format):

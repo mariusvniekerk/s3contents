@@ -100,6 +100,9 @@ class GenericContentsManager(ContentsManager, HasTraits):
     def _directory_model_from_path(self, path, content=False):
         self.log.debug("S3contents.GenericManager._directory_model_from_path: path('%s') type(%s)", path, content)
         model = base_directory_model(path)
+        dstat = self.fs.lstat(path)
+        if dstat.get('ST_MTIME'):
+            model['last_modified'] = model["created"] = dstat['ST_MTIME']
         if content:
             if not self.dir_exists(path):
                 self.no_such_entity(path)
@@ -114,8 +117,10 @@ class GenericContentsManager(ContentsManager, HasTraits):
         """
         model = base_model(path)
         model["type"] = "notebook"
+        fs_stat = self.fs.lstat(path)
         if self.fs.isfile(path):
-            model["last_modified"] = model["created"] = self.fs.lstat(path)["ST_MTIME"]
+            model["last_modified"] = model["created"] = fs_stat["ST_MTIME"]
+            model['size'] = fs_stat.get('ST_SIZE')
         else:
             model["last_modified"] = model["created"] = DUMMY_CREATED_DATE
         if content:
@@ -138,8 +143,8 @@ class GenericContentsManager(ContentsManager, HasTraits):
         if self.fs.isfile(path):
             fs_stat = self.fs.lstat(path)
             model["last_modified"] = model["created"] = fs_stat["ST_MTIME"]
+            model['size'] = fs_stat.get('ST_SIZE')
         else:
-            fs_stat = {}
             model["last_modified"] = model["created"] = DUMMY_CREATED_DATE
         if content:
             try:
@@ -155,7 +160,6 @@ class GenericContentsManager(ContentsManager, HasTraits):
                 model["format"] = format or "base64"
                 from base64 import b64decode
                 model["content"] = b64decode(content)
-            model['size'] = fs_stat.get('ST_SIZE')
         return model
 
     def _convert_file_records(self, paths):

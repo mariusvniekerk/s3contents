@@ -121,10 +121,15 @@ class GCSFS(GenericFS):
 
     def lstat(self, path):
         path_ = self.path(path)
-        info = self.fs.info(path_)
-        ret = {}
-        ret["ST_MTIME"] = info["updated"]
-        return ret
+        if self.isfile(path):
+            info = self.fs.info(path_)
+            ret = {
+                "ST_MTIME": info["updated"],
+                "ST_SIZE": info["size"]
+            }
+            return ret
+        else:
+            return {}
 
     def write(self, path, content, format):
         path_ = self.path(self.unprefix(path))
