@@ -4,6 +4,8 @@ Utilities to make S3 look like a regular file system
 import six
 import s3fs
 import base64
+import threading
+import time
 
 from s3contents.compat import FileNotFoundError
 from s3contents.ipycompat import Unicode
@@ -59,7 +61,14 @@ class S3FS(GenericFS):
                                     config_kwargs=config_kwargs,
                                     s3_additional_kwargs=s3_additional_kwargs)
 
+        self._invalidator = threading.Timer(
+            interval=60, function=self.fs.invalidate_cache)
+        self._invalidator.setDaemon(True)
+        self._invalidator.start()
         self.init()
+
+    def __del__(self):
+        self._invalidator.cancel()
 
     def init(self):
         self.mkdir("")
@@ -76,38 +85,24 @@ class S3FS(GenericFS):
 
     def isfile(self, path):
         path_ = self.path(path)
-        is_file = False
 
         exists = self.fs.exists(path_)
         if not exists:
             is_file = False
         else:
-            try:
-                # Info will fail if path is a dir
-                self.fs.info(path_)
-                is_file = True
-            except FileNotFoundError:
-                pass
+            is_file = path_ in set(self.fs.ls(path_))
 
         self.log.debug("S3contents.S3FS: `%s` is a file: %s", path_, is_file)
         return is_file
 
     def isdir(self, path):
         path_ = self.path(path)
-        is_dir = False
 
         exists = self.fs.exists(path_)
         if not exists:
             is_dir = False
         else:
-            try:
-                # Info will fail if path is a dir
-                self.fs.info(path_)
-                is_dir = False
-            except FileNotFoundError:
-                is_dir = True
-
-        self.log.debug("S3contents.S3FS: `%s` is a directory: %s", path_, is_dir)
+            is_dir = path_ not in set(self.fs.ls(path_))
         return is_dir
 
     def mv(self, old_path, new_path):
@@ -144,7 +139,10 @@ class S3FS(GenericFS):
         path_ = self.path(path, self.dir_keep_file)
         self.log.debug("S3contents.S3FS: Making dir: `%s`", path_)
         self.fs.touch(path_)
-        self.fs.invalidate_cache(path_)
+
+        parent = path_.rsplit('/', 2)[0]
+        self.log.info("S3contents.S3FS: Invalidaing: `%s`", parent)
+        self.fs.invalidate_cache(parent)
 
     def read(self, path):
         path_ = self.path(path)
@@ -159,7 +157,7 @@ class S3FS(GenericFS):
         info = self.fs.info(path_)
         ret = {
             "ST_MTIME": info["LastModified"],
-            "ST_SIZE": info["Size"]
+            "ST_SIZE": info["Size"],
         }
         return ret
 
